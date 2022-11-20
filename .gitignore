@@ -53,6 +53,6 @@ bin/*
 test/test_runner
 
 .cache
-share\
+share/
 .vscode
 *.spv

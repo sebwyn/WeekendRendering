@@ -208,6 +208,11 @@ void VulkanApi::init_instance(const Window& window) {
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
 
+#ifdef __APPLE__ 
+    extensions.push_back("VK_KHR_portability_enumeration");
+    createInfo.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#endif
+
     createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
     createInfo.ppEnabledExtensionNames = extensions.data();
 
@@ -224,7 +229,10 @@ void VulkanApi::init_instance(const Window& window) {
         createInfo.enabledLayerCount = 0;
     }
 
+
     if(vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+        cout << vkCreateInstance(&createInfo, nullptr, &instance) << endl; 
+        cout << VK_ERROR_INCOMPATIBLE_DRIVER << endl;
         throw runtime_error("Failed to create instance!");
     }
 }

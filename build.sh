@@ -1,8 +1,8 @@
 #!/bin/bash
 
-cd build/run
-cmake ../..
+cd build
+cmake ..
 cmake --build .
 
-cd ../..
-cmake --install build/run
+cd ..
+cmake --install build

@@ -65,7 +65,7 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
     }
 }
 
-VulkanApi::VulkanApi(const Window& window) {
+VulkanApi::VulkanApi(const Window& window) : window(window) {
     init_instance(window);
     setup_debug_messenger();
     
@@ -75,8 +75,9 @@ VulkanApi::VulkanApi(const Window& window) {
 
     init_physical_device();
     init_device();
-    init_swapchain(window);
-    init_image_views();
+
+    create_swapchain();
+    create_swapchain_image_views();
 
     create_render_pass();
     create_graphics_pipeline();
@@ -91,6 +92,8 @@ VulkanApi::VulkanApi(const Window& window) {
 VulkanApi::~VulkanApi() {
     vkDeviceWaitIdle(device);
 
+    cleanup_swapchain();
+
     for(int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(device, image_available_semaphores[i], nullptr);
         vkDestroySemaphore(device, render_finished_semaphores[i], nullptr);
@@ -104,10 +107,8 @@ VulkanApi::~VulkanApi() {
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyRenderPass(device, renderPass, nullptr);
-    for (auto imageView : swapChainImageViews) {
-        vkDestroyImageView(device, imageView, nullptr);
-    }
-    vkDestroySwapchainKHR(device, swapchain, nullptr);
+
+
     vkDestroyDevice(device, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
     
@@ -119,10 +120,19 @@ VulkanApi::~VulkanApi() {
 
 void VulkanApi::draw(){
     vkWaitForFences(device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
-    vkResetFences(device, 1, &in_flight_fences[current_frame]);
 
     uint32_t image_index;
-    vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
+    VkResult result = 
+        vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
+    
+    if(result == VK_ERROR_OUT_OF_DATE_KHR){
+        recreate_swapchain();
+        return;
+    } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+        throw runtime_error("failed to acquire swap chain image!");
+    }
+
+    vkResetFences(device, 1, &in_flight_fences[current_frame]);
 
     vkResetCommandBuffer(command_buffers[current_frame], 0);
     record_command_buffer(command_buffers[current_frame], image_index);
@@ -159,6 +169,12 @@ void VulkanApi::draw(){
     presentInfo.pResults = nullptr; // Optional
 
     vkQueuePresentKHR(present_queue, &presentInfo);
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        recreate_swapchain();
+    } else if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to present swap chain image!");
+    }
 
     current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
@@ -451,6 +467,8 @@ void VulkanApi::init_device() {
     vkGetDeviceQueue(device, indices.present_family.value(), 0, &present_queue);
 }
 
+//BEGIN Swapchain
+
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const vector<VkSurfaceFormatKHR>& availableFormats) {
     for (const auto& availableFormat : availableFormats) {
         if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
@@ -505,7 +523,7 @@ VkExtent2D chooseSwapExtent(const Window& window, const VkSurfaceCapabilitiesKHR
     }
 }
 
-void VulkanApi::init_swapchain(const Window& window) {
+void VulkanApi::create_swapchain() {
     auto swapchain_support = query_swapchain_support(physical_device);
     
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapchain_support.formats);
@@ -559,7 +577,7 @@ void VulkanApi::init_swapchain(const Window& window) {
     vkGetSwapchainImagesKHR(device, swapchain, &imageCount, swapChainImages.data());
 }
 
-void VulkanApi::init_image_views(){
+void VulkanApi::create_swapchain_image_views(){
      swapChainImageViews.resize(swapChainImages.size());
      for (size_t i = 0; i < swapChainImages.size(); i++) {
         VkImageViewCreateInfo createInfo{};
@@ -581,6 +599,28 @@ void VulkanApi::init_image_views(){
         }
     }
 }
+
+void VulkanApi::cleanup_swapchain() {
+    for (size_t i = 0; i < swapChainFramebuffers.size(); i++) {
+        vkDestroyFramebuffer(device, swapChainFramebuffers[i], nullptr);
+    }
+    for (auto imageView : swapChainImageViews) {
+        vkDestroyImageView(device, imageView, nullptr);
+    }
+    vkDestroySwapchainKHR(device, swapchain, nullptr);
+}
+
+void VulkanApi::recreate_swapchain() {
+    vkDeviceWaitIdle(device);
+    
+    cleanup_swapchain();
+
+    create_swapchain();
+    create_swapchain_image_views();
+    create_framebuffers();
+}
+
+//BEGIN render state
 
 VkShaderModule VulkanApi::create_shader_module(const vector<char>& code) {
     VkShaderModuleCreateInfo createInfo{};
@@ -797,6 +837,8 @@ void VulkanApi::create_framebuffers() {
     }
 }
 
+//BEGIN draw state
+
 void VulkanApi::create_command_pool() {
     QueueFamilyIndices queueFamilyIndices = find_queue_families(physical_device);
 
@@ -809,6 +851,7 @@ void VulkanApi::create_command_pool() {
         throw std::runtime_error("failed to create command pool!");
     }
 }
+
 
 void VulkanApi::create_command_buffers() {
     command_buffers.resize(MAX_FRAMES_IN_FLIGHT);

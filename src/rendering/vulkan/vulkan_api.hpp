@@ -29,20 +29,49 @@ class VulkanApi : public RenderApi {
 public:
     VulkanApi(const Window& window);
 
+    void draw() override;
+
     ~VulkanApi() override;
 
     string info() override;
 private:
+    void draw_frame();
+
     void init_instance(const Window& window);
     void setup_debug_messenger();
 
     QueueFamilyIndices find_queue_families(const VkPhysicalDevice& physical_device);
     SwapChainSupportDetails query_swapchain_support(const VkPhysicalDevice& physical_device);
 
-    tuple<QueueFamilyIndices, SwapChainSupportDetails> init_physical_device();
-    void init_device(const QueueFamilyIndices& indices);
-    void init_swapchain(const Window& window, const QueueFamilyIndices& indices, const SwapChainSupportDetails& swapchain_support);
+    void init_physical_device();
+    void init_device();
+    void init_swapchain(const Window& window);
+    
     void init_image_views();
+
+    VkShaderModule create_shader_module(const vector<char>& code);
+    void create_graphics_pipeline();
+    void create_render_pass();
+
+    void create_command_pool();
+    void create_command_buffer();
+    
+    void create_framebuffers();
+    void create_sync_objects();
+
+    void record_command_buffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+    
+    vector<VkFramebuffer> swapChainFramebuffers;
+    VkCommandPool commandPool;
+    VkCommandBuffer commandBuffer;
+
+    VkSemaphore imageAvailableSemaphore;
+    VkSemaphore renderFinishedSemaphore;
+    VkFence inFlightFence;
+
+    VkRenderPass renderPass;
+    VkPipelineLayout pipelineLayout;
+    VkPipeline graphicsPipeline;
 
     VkExtent2D swapchain_extent;
     VkFormat swapchain_image_format;

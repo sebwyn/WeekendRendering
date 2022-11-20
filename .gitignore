@@ -55,3 +55,4 @@ test/test_runner
 .cache
 share\
 .vscode
+*.spv

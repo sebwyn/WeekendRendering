@@ -7,7 +7,10 @@ using namespace std;
 
 class RenderApi {
   public:
-    virtual ~RenderApi() = default;   
+    virtual ~RenderApi() = default;
+
+    virtual void draw() = 0;
+
     virtual string info() = 0;
 };
 

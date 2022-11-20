@@ -16,6 +16,7 @@ int main(int argc, const char *argv[]) {
 
     while(!window.closed()){
         window.update();
+        api->draw();
     }
     
     delete api;

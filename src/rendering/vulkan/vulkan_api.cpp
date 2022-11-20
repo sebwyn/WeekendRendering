@@ -18,8 +18,36 @@ const std::vector<const char*> deviceExtensions = {
     const bool enableValidationLayers = true;
 #endif
 
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType,
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    void* pUserData) {
+
+    cerr << "validation layer: " << pCallbackData->pMessage << endl;
+
+    return VK_FALSE;
+}
+
+VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
+    auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+    if (func != nullptr) {
+        return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+    } else {
+        return VK_ERROR_EXTENSION_NOT_PRESENT;
+    }
+}
+
+void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator) {
+    auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+    if (func != nullptr) {
+        func(instance, debugMessenger, pAllocator);
+    }
+}
+
 VulkanApi::VulkanApi(const Window& window) {
     init_instance(window);
+    setup_debug_messenger();
     
     if (glfwCreateWindowSurface(instance, window.glfw_window(), nullptr, &surface) != VK_SUCCESS) {
         throw std::runtime_error("failed to create window surface!");
@@ -31,8 +59,16 @@ VulkanApi::VulkanApi(const Window& window) {
 }
 
 VulkanApi::~VulkanApi() {
+    for (auto imageView : swapChainImageViews) {
+        vkDestroyImageView(device, imageView, nullptr);
+    }
+    vkDestroySwapchainKHR(device, swapchain, nullptr);
     vkDestroyDevice(device, nullptr);
-    vkDestroySurfaceKHR(instance, surface, nullptr); 
+    vkDestroySurfaceKHR(instance, surface, nullptr);
+    
+    if(enableValidationLayers) {
+        DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+    }
     vkDestroyInstance(instance, nullptr);
 }
 
@@ -79,11 +115,16 @@ void VulkanApi::init_instance(const Window& window) {
 
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions;
+    glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
-    glfwExtensions = window.get_vulkan_extensions(&glfwExtensionCount);
+    vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
-    createInfo.enabledExtensionCount = glfwExtensionCount;
-    createInfo.ppEnabledExtensionNames = glfwExtensions;
+    if (enableValidationLayers) {
+        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    createInfo.ppEnabledExtensionNames = extensions.data();
 
     //validation layers
     if (enableValidationLayers && !check_valid_layers_support()) {
@@ -98,7 +139,24 @@ void VulkanApi::init_instance(const Window& window) {
         createInfo.enabledLayerCount = 0;
     }
 
-    VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
+    if(vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create instance!");
+    }
+}
+
+void VulkanApi::setup_debug_messenger() {
+    if (!enableValidationLayers) return;
+
+    VkDebugUtilsMessengerCreateInfoEXT createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    createInfo.pfnUserCallback = debugCallback;
+    createInfo.pUserData = nullptr; // Optional
+
+    if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
+        throw std::runtime_error("failed to set up debug messenger!");
+    }
 }
 
 QueueFamilyIndices VulkanApi::find_queue_families(const VkPhysicalDevice& pd){
@@ -128,7 +186,7 @@ QueueFamilyIndices VulkanApi::find_queue_families(const VkPhysicalDevice& pd){
     return indices;
 }
 
-SwapChainSupportDetails VulkanApi::query_swapchain_support(const VkPhysicalDevice& physicalDevice){
+SwapChainSupportDetails VulkanApi::query_swapchain_support(const VkPhysicalDevice& physical_device){
     SwapChainSupportDetails details;
 
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &details.capabilities);
@@ -226,7 +284,7 @@ void VulkanApi::init_device(const QueueFamilyIndices& indices) {
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 
     create_info.pQueueCreateInfos = queue_create_infos.data();
-    create_info.queueCreateInfoCount = queue_create_infos.size();
+    create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
 
     create_info.pEnabledFeatures = &device_features;
 
@@ -287,8 +345,16 @@ VkExtent2D chooseSwapExtent(const Window& window, const VkSurfaceCapabilitiesKHR
             static_cast<uint32_t>(height)
         };
 
-        actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-        actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+        if(actualExtent.width < capabilities.minImageExtent.width) {
+            actualExtent.width = capabilities.minImageExtent.width;
+        } else if(actualExtent.width > capabilities.maxImageExtent.width) {
+            actualExtent.width = capabilities.maxImageExtent.width;
+        }
+        if(actualExtent.height < capabilities.minImageExtent.height) {
+            actualExtent.height = capabilities.minImageExtent.height;
+        } else if(actualExtent.height > capabilities.maxImageExtent.height) {
+            actualExtent.height = capabilities.maxImageExtent.height;
+        }
 
         return actualExtent;
     }
@@ -335,6 +401,36 @@ void VulkanApi::init_swapchain(const Window& window, const QueueFamilyIndices& i
 
     if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain) != VK_SUCCESS) {
         throw std::runtime_error("failed to create swap chain!");
+    }
+
+    swapchain_image_format = surfaceFormat.format;
+    swapchain_extent = extent;
+
+    vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr);
+    swapChainImages.resize(imageCount);
+    vkGetSwapchainImagesKHR(device, swapchain, &imageCount, swapChainImages.data());
+}
+
+void VulkanApi::init_image_views(){
+     swapChainImageViews.resize(swapChainImages.size());
+     for (size_t i = 0; i < swapChainImages.size(); i++) {
+        VkImageViewCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        createInfo.image = swapChainImages[i];
+        createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        createInfo.format = swapchain_image_format;
+        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        createInfo.subresourceRange.baseMipLevel = 0;
+        createInfo.subresourceRange.levelCount = 1;
+        createInfo.subresourceRange.baseArrayLayer = 0;
+        createInfo.subresourceRange.layerCount = 1;
+        if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create image views!");
+        }
     }
 }
 

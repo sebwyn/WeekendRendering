@@ -1,0 +1,6 @@
+[submodule "test/lib/googletest"]
+	path = test/lib/googletest
+	url = https://github.com/google/googletest
+[submodule "src/rendering/lib/glfw"]
+	path = src/rendering/lib/glfw
+	url = https://github.com/glfw/glfw

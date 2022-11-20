@@ -34,6 +34,7 @@ public:
     string info() override;
 private:
     void init_instance(const Window& window);
+    void setup_debug_messenger();
 
     QueueFamilyIndices find_queue_families(const VkPhysicalDevice& physical_device);
     SwapChainSupportDetails query_swapchain_support(const VkPhysicalDevice& physical_device);
@@ -41,12 +42,19 @@ private:
     tuple<QueueFamilyIndices, SwapChainSupportDetails> init_physical_device();
     void init_device(const QueueFamilyIndices& indices);
     void init_swapchain(const Window& window, const QueueFamilyIndices& indices, const SwapChainSupportDetails& swapchain_support);
+    void init_image_views();
 
+    VkExtent2D swapchain_extent;
+    VkFormat swapchain_image_format;
 
     VkInstance instance;
+    VkDebugUtilsMessengerEXT debugMessenger;
+
     VkSurfaceKHR surface;
     VkPhysicalDevice physical_device;
     VkDevice device;
     VkQueue graphics_queue, present_queue;
     VkSwapchainKHR swapchain;
+    vector<VkImage> swapChainImages;
+    vector<VkImageView> swapChainImageViews;
 };

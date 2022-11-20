@@ -45,8 +45,8 @@ private:
 
     void init_physical_device();
     void init_device();
+
     void init_swapchain(const Window& window);
-    
     void init_image_views();
 
     VkShaderModule create_shader_module(const vector<char>& code);
@@ -54,27 +54,33 @@ private:
     void create_render_pass();
 
     void create_command_pool();
-    void create_command_buffer();
+    void create_command_buffers();
     
     void create_framebuffers();
     void create_sync_objects();
 
     void record_command_buffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     
-    vector<VkFramebuffer> swapChainFramebuffers;
-    VkCommandPool commandPool;
-    VkCommandBuffer commandBuffer;
+    const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+    uint32_t current_frame = 0;
 
-    VkSemaphore imageAvailableSemaphore;
-    VkSemaphore renderFinishedSemaphore;
-    VkFence inFlightFence;
+    vector<VkCommandBuffer> command_buffers;
+    vector<VkSemaphore> image_available_semaphores;
+    vector<VkSemaphore> render_finished_semaphores;
+    vector<VkFence> in_flight_fences;
 
     VkRenderPass renderPass;
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
 
+    VkCommandPool commandPool;
+
+    vector<VkFramebuffer> swapChainFramebuffers;
     VkExtent2D swapchain_extent;
     VkFormat swapchain_image_format;
+    vector<VkImage> swapChainImages;
+    vector<VkImageView> swapChainImageViews;
+    VkSwapchainKHR swapchain;
 
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
@@ -83,7 +89,4 @@ private:
     VkPhysicalDevice physical_device;
     VkDevice device;
     VkQueue graphics_queue, present_queue;
-    VkSwapchainKHR swapchain;
-    vector<VkImage> swapChainImages;
-    vector<VkImageView> swapChainImageViews;
 };
